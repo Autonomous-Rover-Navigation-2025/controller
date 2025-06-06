@@ -45,7 +45,7 @@ class WheelEncoderNode(Node):
             ["front_left", "front_right", "rear_left", "rear_right"]
         ]
         self.publisher_.publish(msg)
-        self.get_logger().info(f"Published ticks: {msg.data}")
+        self.get_logger().debug(f"Published ticks: {msg.data}")
 
 
 def main(args=None):

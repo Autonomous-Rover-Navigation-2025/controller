@@ -17,20 +17,6 @@ def generate_launch_description():
         output='screen',
     )
 
-    wheel_odom_publisher_node = Node(
-        package='controller',
-        executable='odom_publisher',
-        name='odom_publisher',
-        output='screen',
-    )
-
-    imu_publisher_node = Node(
-        package='controller',
-        executable='imu_publisher',
-        name='imu_publisher',
-        output='screen',
-    )
-
     rplidar_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(get_package_share_directory('rplidar_ros'), 'launch',
@@ -41,10 +27,48 @@ def generate_launch_description():
             os.path.join(get_package_share_directory('rover_bringup'),
                          'launch', 'realsense_camera.launch.py')))
 
+    wheel_encoder_node = Node(
+        package='controller',
+        executable='wheel_encoder_node',
+        name='wheel_encoder_node',
+        output='screen',
+    )
+
+    imu_publisher_node = Node(
+        package='controller',
+        executable='imu_publisher',
+        name='imu_publisher',
+        output='screen',
+    )
+
+    imu_filter_madgwick = Node(
+        package='imu_filter_madgwick',
+        executable='imu_filter_madgwick_node',
+        name='imu_filter',
+        parameters=[{
+            'use_mag': False,
+            'publish_tf': False,
+            'world_frame': 'enu',
+            'base_frame': 'camera_link'
+        }],
+        remappings=[
+            ('/imu/data_raw', '/imu'),
+        ],
+    )
+
+    odom_publisher_node = Node(
+        package='controller',
+        executable='odom_publisher',
+        name='odom_publisher',
+        output='screen',
+    )
+
     return LaunchDescription([
         sabertooth_cmd_vel_bridge_node,
-        wheel_odom_publisher_node,
+        wheel_encoder_node,
+        odom_publisher_node,
         imu_publisher_node,
         rplidar_launch,
         realsense_launch,
+        imu_filter_madgwick,
     ])

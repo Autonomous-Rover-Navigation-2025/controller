@@ -190,171 +190,171 @@
 
 
 
-# import rclpy
-# from rclpy.node import Node
-# from std_msgs.msg import String, Float32MultiArray
-# import Jetson.GPIO as GPIO
-# import time
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String, Float32MultiArray
+import Jetson.GPIO as GPIO
+import time
 
 
-# # Define GPIO pins for each wheel's encoder
-# ENCODER_PINS = {
-#     "front_left": 19,
-#     "front_right": 22,
-#     "rear_left": 29,
-#     "rear_right": 13
-# }
+# Define GPIO pins for each wheel's encoder
+ENCODER_PINS = {
+    "front_left": 19,
+    "front_right": 22,
+    "rear_left": 29,
+    "rear_right": 13
+}
 
-# # Global state variables
-# encoder_ticks = {
-#     "front_left": 0,
-#     "front_right": 0,
-#     "rear_left": 0,
-#     "rear_right": 0
-# }
+# Global state variables
+encoder_ticks = {
+    "front_left": 0,
+    "front_right": 0,
+    "rear_left": 0,
+    "rear_right": 0
+}
 
-# distance = {
-#     "front_left": 0.0,
-#     "front_right": 0.0,
-#     "rear_left": 0.0,
-#     "rear_right": 0.0
-# }
+distance = {
+    "front_left": 0.0,
+    "front_right": 0.0,
+    "rear_left": 0.0,
+    "rear_right": 0.0
+}
 
-# speed = {
-#     "front_left": 0.0,
-#     "front_right": 0.0,
-#     "rear_left": 0.0,
-#     "rear_right": 0.0
-# }
+speed = {
+    "front_left": 0.0,
+    "front_right": 0.0,
+    "rear_left": 0.0,
+    "rear_right": 0.0
+}
 
-# # Constants
-# TIMER_PERIOD = 0.5  # seconds
-# TICKS_PER_ROTATION = 620
-# TPR = 360
-# WHEEL_DIAMETER = 0.1524 #meters
-# BASE_DISTANCE_BETWEEN_WHEELS = 0.26 #meters
-# CIRCUMFERENCE = (3.1416 * WHEEL_DIAMETER )
+# Constants
+TIMER_PERIOD = 0.5  # seconds
+TICKS_PER_ROTATION = 620
+TPR = 360
+WHEEL_DIAMETER = 0.1524 #meters
+BASE_DISTANCE_BETWEEN_WHEELS = 0.26 #meters
+CIRCUMFERENCE = (3.1416 * WHEEL_DIAMETER )
 
-# #L (float): Half of the wheelbase [Center to Center] (distance from front to rear wheel / 2) in meters.
-# HALF_OF_WHEEL_BASE  = ( (0.31 - 0.05 -0.05) /2 )
-# #W (float): Half of the track width [Center to Center] (distance between left and right wheels / 2) in meters.
-# HALF_OF_TRACK_WIDTH  = ((0.05552 + 0.02 +0.24 + 0.02 + 0.05552) /2 )
-# class WheelOdometer(Node):
-#     def __init__(self):
-#         super().__init__('wheel_odometry')
-#         self.publisher_ = self.create_publisher(String, '/wheel_ticks', 10)
-#         self.timer = self.create_timer(TIMER_PERIOD, self.timer_callback)
+#L (float): Half of the wheelbase [Center to Center] (distance from front to rear wheel / 2) in meters.
+HALF_OF_WHEEL_BASE  = ( (0.31 - 0.05 -0.05) /2 )
+#W (float): Half of the track width [Center to Center] (distance between left and right wheels / 2) in meters.
+HALF_OF_TRACK_WIDTH  = ((0.05552 + 0.02 +0.24 + 0.02 + 0.05552) /2 )
+class WheelOdometer(Node):
+    def __init__(self):
+        super().__init__('wheel_odometry')
+        self.publisher_ = self.create_publisher(String, '/wheel_ticks', 10)
+        self.timer = self.create_timer(TIMER_PERIOD, self.timer_callback)
 
-#         # Use BOARD pin numbering
-#         GPIO.setmode(GPIO.BOARD)
-#         for wheel, pin in ENCODER_PINS.items():
-#             GPIO.setup(pin, GPIO.IN)
+        # Use BOARD pin numbering
+        GPIO.setmode(GPIO.BOARD)
+        for wheel, pin in ENCODER_PINS.items():
+            GPIO.setup(pin, GPIO.IN)
 
 
 
-#     def measure_pwm(self, pin, timeout=TIMER_PERIOD):
-#         """Measure rising edges on a GPIO pin within a time window."""
-#         count = 0
-#         start_time = time.time()
-#         last_state = GPIO.input(pin)
+    def measure_pwm(self, pin, timeout=TIMER_PERIOD):
+        """Measure rising edges on a GPIO pin within a time window."""
+        count = 0
+        start_time = time.time()
+        last_state = GPIO.input(pin)
 
-#         while (time.time() - start_time) < timeout:
-#             current_state = GPIO.input(pin)
-#             if last_state == 0 and current_state == 1:
-#                 count += 1
-#             last_state = current_state
+        while (time.time() - start_time) < timeout:
+            current_state = GPIO.input(pin)
+            if last_state == 0 and current_state == 1:
+                count += 1
+            last_state = current_state
 
-#         return count
+        return count
     
-#     def compute_robot_velocity(self, speed, L, W):
-#         """
-#         Compute the robot's linear (vx, vy) and angular (omega_z) velocity 
-#         for a 4-wheeled Mecanum drive (Using individuals speed (m/s) directly)
+    def compute_robot_velocity(self, speed, L, W):
+        """
+        Compute the robot's linear (vx, vy) and angular (omega_z) velocity 
+        for a 4-wheeled Mecanum drive (Using individuals speed (m/s) directly)
 
-#         Args:
-#             speed (dict): Dictionary with keys "front_left", "front_right", 
-#                         "rear_left", "rear_right" (values in m/s).
-#             L (float): Half of the wheelbase [Center to Center] (distance from front to rear wheel / 2) in meters.
-#             W (float): Half of the track width [Center to Center] (distance between left and right wheels / 2) in meters.
+        Args:
+            speed (dict): Dictionary with keys "front_left", "front_right", 
+                        "rear_left", "rear_right" (values in m/s).
+            L (float): Half of the wheelbase [Center to Center] (distance from front to rear wheel / 2) in meters.
+            W (float): Half of the track width [Center to Center] (distance between left and right wheels / 2) in meters.
 
-#         Returns:
-#             tuple: (vx, vy, omega_z) velocities in m/s and rad/s.
-#         """
-#         v1 = float(speed["front_left"])
-#         v2 = float(speed["front_right"])
-#         v3 = float(speed["rear_left"])
-#         v4 = float(speed["rear_right"])
+        Returns:
+            tuple: (vx, vy, omega_z) velocities in m/s and rad/s.
+        """
+        v1 = float(speed["front_left"])
+        v2 = float(speed["front_right"])
+        v3 = float(speed["rear_left"])
+        v4 = float(speed["rear_right"])
 
-#         a = L + W  # Distance factor for rotation
+        a = L + W  # Distance factor for rotation
 
-#         vx = (v1 + v2 + v3 + v4) / 4.0
-#         vy = (-v1 + v2 + v3 - v4) / 4.0
-#         omega_z = (-v1 + v2 - v3 + v4) / (4.0 * a)
+        vx = (v1 + v2 + v3 + v4) / 4.0
+        vy = (-v1 + v2 + v3 - v4) / 4.0
+        omega_z = (-v1 + v2 - v3 + v4) / (4.0 * a)
 
-#         return vx, vy, omega_z
+        return vx, vy, omega_z
 
-#     def timer_callback(self):
-#         """Periodically measure and publish encoder data."""
-#         for wheel, pin in ENCODER_PINS.items():
-#             encoder_ticks[wheel] = self.measure_pwm(pin)
-#             distance[wheel] = (encoder_ticks[wheel] / TICKS_PER_ROTATION ) * CIRCUMFERENCE
-#             speed[wheel] = distance[wheel] / TIMER_PERIOD
-
-
-#         tick_msg = Float32MultiArray()
-#         tick_msg.data = [
-#             float(encoder_ticks["front_left"]),
-#             float(encoder_ticks["front_right"]),
-#             float(encoder_ticks["rear_left"]),
-#             float(encoder_ticks["rear_right"])
-#         ]
-#         # self.get_logger().info(f"tick_msg.data : {tick_msg.data}")  
-#         self.get_logger().info(f"tick_msg.data -->  'front_left' (pin:{ENCODER_PINS['front_left']}): {tick_msg.data[0]}, 'front_right' (pin:{ENCODER_PINS['front_right']}):{tick_msg.data[1]}, 'rear_left' (pin:{ENCODER_PINS['rear_left']}):{tick_msg.data[2]}, rear_right' (pin:{ENCODER_PINS['rear_right']}):{tick_msg.data[3]}") 
-
-#         # distance_msg = Float32MultiArray()
-#         # distance_msg.data = [
-#         #     float(distance["front_left"]),
-#         #     float(distance["front_right"]),
-#         #     float(distance["rear_left"]),
-#         #     float(distance["rear_right"])
-#         # ]
-#         # self.get_logger().info(f"distance_msg.data : {distance_msg.data}") 
-#         # self.get_logger().info(f"distance_msg.data --> 'front_left' (pin:{ENCODER_PINS['front_left']}): {distance_msg.data[0]:.3f}, 'front_right' (pin:{ENCODER_PINS['front_right']}):{distance_msg.data[1]:.3f}, 'rear_left' (pin:{ENCODER_PINS['rear_left']}):{distance_msg.data[2]:.3f}, rear_right' (pin:{ENCODER_PINS['rear_right']}):{distance_msg.data[3]:.3f}") 
+    def timer_callback(self):
+        """Periodically measure and publish encoder data."""
+        for wheel, pin in ENCODER_PINS.items():
+            encoder_ticks[wheel] = self.measure_pwm(pin)
+            distance[wheel] = (encoder_ticks[wheel] / TICKS_PER_ROTATION ) * CIRCUMFERENCE
+            speed[wheel] = distance[wheel] / TIMER_PERIOD
 
 
-#         speed_msg = Float32MultiArray()
-#         speed_msg.data = [
-#             float(speed["front_left"]),
-#             float(speed["front_right"]),
-#             float(speed["rear_left"]),
-#             float(speed["rear_right"])
-#         ]
-#         # self.get_logger().info(f"speed_msg.data : {speed_msg.data}") 
-#         self.get_logger().info(f"speed_msg.data --> 'front_left' (pin:{ENCODER_PINS['front_left']}): {speed_msg.data[0]:.3f}, 'front_right' (pin:{ENCODER_PINS['front_right']}):{speed_msg.data[1]:.3f}, 'rear_left' (pin:{ENCODER_PINS['rear_left']}):{speed_msg.data[2]:.3f}, rear_right' (pin:{ENCODER_PINS['rear_right']}):{speed_msg.data[3]:.3f}") 
-#         vx, vy, omega_z = self.compute_robot_velocity(speed, HALF_OF_WHEEL_BASE, HALF_OF_TRACK_WIDTH)
-#         self.get_logger().info(f"vx = {vx:.2f} m/s, vy = {vy:.2f} m/s, omega_z = {omega_z:.2f} rad/s") 
+        tick_msg = Float32MultiArray()
+        tick_msg.data = [
+            float(encoder_ticks["front_left"]),
+            float(encoder_ticks["front_right"]),
+            float(encoder_ticks["rear_left"]),
+            float(encoder_ticks["rear_right"])
+        ]
+        # self.get_logger().info(f"tick_msg.data : {tick_msg.data}")  
+        self.get_logger().info(f"tick_msg.data -->  'front_left' (pin:{ENCODER_PINS['front_left']}): {tick_msg.data[0]}, 'front_right' (pin:{ENCODER_PINS['front_right']}):{tick_msg.data[1]}, 'rear_left' (pin:{ENCODER_PINS['rear_left']}):{tick_msg.data[2]}, rear_right' (pin:{ENCODER_PINS['rear_right']}):{tick_msg.data[3]}") 
+
+        # distance_msg = Float32MultiArray()
+        # distance_msg.data = [
+        #     float(distance["front_left"]),
+        #     float(distance["front_right"]),
+        #     float(distance["rear_left"]),
+        #     float(distance["rear_right"])
+        # ]
+        # self.get_logger().info(f"distance_msg.data : {distance_msg.data}") 
+        # self.get_logger().info(f"distance_msg.data --> 'front_left' (pin:{ENCODER_PINS['front_left']}): {distance_msg.data[0]:.3f}, 'front_right' (pin:{ENCODER_PINS['front_right']}):{distance_msg.data[1]:.3f}, 'rear_left' (pin:{ENCODER_PINS['rear_left']}):{distance_msg.data[2]:.3f}, rear_right' (pin:{ENCODER_PINS['rear_right']}):{distance_msg.data[3]:.3f}") 
 
 
-# # ==== Entry Point ====
+        speed_msg = Float32MultiArray()
+        speed_msg.data = [
+            float(speed["front_left"]),
+            float(speed["front_right"]),
+            float(speed["rear_left"]),
+            float(speed["rear_right"])
+        ]
+        # self.get_logger().info(f"speed_msg.data : {speed_msg.data}") 
+        self.get_logger().info(f"speed_msg.data --> 'front_left' (pin:{ENCODER_PINS['front_left']}): {speed_msg.data[0]:.3f}, 'front_right' (pin:{ENCODER_PINS['front_right']}):{speed_msg.data[1]:.3f}, 'rear_left' (pin:{ENCODER_PINS['rear_left']}):{speed_msg.data[2]:.3f}, rear_right' (pin:{ENCODER_PINS['rear_right']}):{speed_msg.data[3]:.3f}") 
+        vx, vy, omega_z = self.compute_robot_velocity(speed, HALF_OF_WHEEL_BASE, HALF_OF_TRACK_WIDTH)
+        self.get_logger().info(f"vx = {vx:.2f} m/s, vy = {vy:.2f} m/s, omega_z = {omega_z:.2f} rad/s") 
 
-# def main(args=None):
-#     rclpy.init(args=args)
-#     wheelodom_node = WheelOdometer()
 
-#     try:
-#         rclpy.spin(wheelodom_node)
-#     except KeyboardInterrupt:
-#         print("KeyboardInterrupt received. Shutting down...")
-#     except Exception as e:
-#         print(f"An error occurred: {e}")
-#     finally:
-#         wheelodom_node.destroy_node()
-#         GPIO.cleanup()
-#         if rclpy.ok():
-#             rclpy.shutdown()
+# ==== Entry Point ====
 
-# if __name__ == '__main__':
-#     main()
+def main(args=None):
+    rclpy.init(args=args)
+    wheelodom_node = WheelOdometer()
+
+    try:
+        rclpy.spin(wheelodom_node)
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt received. Shutting down...")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        wheelodom_node.destroy_node()
+        GPIO.cleanup()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
 
 
 

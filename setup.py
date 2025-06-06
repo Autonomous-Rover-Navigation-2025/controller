@@ -29,6 +29,7 @@ setup(
             'test_serial_com = controller.test_serial_com:main',
             'sabertooth_cmd_vel_bridge = controller.sabertooth_cmd_vel_bridge:main',
             'odom_publisher = controller.odom_publisher:main',
+            'wheel_encoder_node = controller.wheel_encoder_node:main',
             'imu_publisher = controller.imu_publisher:main',
         ],
     },

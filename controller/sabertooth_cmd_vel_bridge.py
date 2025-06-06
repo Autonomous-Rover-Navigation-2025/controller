@@ -23,6 +23,7 @@ class SabertoothBridge(Node):
         # Load parameters
         self.L = self.get_parameter('wheel_base').value
         self.v_max = self.get_parameter('max_speed').value
+        self.w_max = self.get_parameter('max_speed').value
         port = self.get_parameter('port').value
         baud = self.get_parameter('baud').value
 
@@ -48,9 +49,18 @@ class SabertoothBridge(Node):
         v_l = v + w * self.L / 2
         v_r = v - w * self.L / 2
 
-        # Convert to motor command values (range: -127 to 127)
-        val_l = self.clamp_and_int(v_l / self.v_max * 127, -127, 127)
-        val_r = self.clamp_and_int(v_r / self.v_max * 127, -127, 127)
+        # Normalize with respect to motion type
+        if abs(v) > 0.001:   # if linear motion is there   
+            val_l = self.clamp_and_int(v_l / self.v_max * 127, -127, 127)
+            val_r = self.clamp_and_int(v_r / self.v_max * 127, -127, 127)
+        elif abs(w) > 0.001:  # if only angular motion is there 
+            # Normalize based on max angular-derived velocity
+            angular_to_linear = (self.L / 2) * self.w_max  # Max value v_l or v_r can reach during rotation
+            val_l = self.clamp_and_int(v_l / angular_to_linear * 127, -127, 127)
+            val_r = self.clamp_and_int(v_r / angular_to_linear * 127, -127, 127)
+        else:
+            val_l = 0
+            val_r = 0
 
         # Send to left motor
         self.send_motor_command(self.addr_left, val_l)
