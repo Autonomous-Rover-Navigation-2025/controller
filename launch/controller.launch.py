@@ -1,74 +1,95 @@
-from launch import LaunchDescription
-from launch_ros.actions import Node
-from launch.actions import IncludeLaunchDescription
-from launch.launch_description_sources import PythonLaunchDescriptionSource
-from ament_index_python.packages import get_package_share_directory
-
+#!/usr/bin/env python3
 import os
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch.conditions import IfCondition
+from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    # Args
+    use_sim_time = DeclareLaunchArgument('use_sim_time', default_value='false')
+    log_level = DeclareLaunchArgument('log_level', default_value='info')
+    start_encoder = DeclareLaunchArgument('start_encoder',
+                                          default_value='true')
+    start_odom = DeclareLaunchArgument('start_odom', default_value='true')
+    start_imu = DeclareLaunchArgument('start_imu', default_value='true')
+    start_motor = DeclareLaunchArgument('start_motor', default_value='true')
 
     # Nodes
-    sabertooth_cmd_vel_bridge_node = Node(
-        package='controller',
-        executable='sabertooth_cmd_vel_bridge',
-        name='sabertooth_cmd_vel_bridge',
-        output='screen',
-    )
+    encoder_node = Node(package='controller',
+                        executable='wheel_encoder',
+                        name='wheel_encoder',
+                        output='screen',
+                        parameters=[{
+                            'use_sim_time':
+                            LaunchConfiguration('use_sim_time')
+                        }],
+                        arguments=[
+                            '--ros-args', '--log-level',
+                            LaunchConfiguration('log_level')
+                        ],
+                        respawn=True,
+                        condition=IfCondition(
+                            LaunchConfiguration('start_encoder')))
 
-    rplidar_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(get_package_share_directory('rplidar_ros'), 'launch',
-                         'view_rplidar_s3_launch.py')))
+    wheel_odom_node = Node(package='controller',
+                           executable='wheel_odom_publisher',
+                           name='wheel_odom_publisher',
+                           output='screen',
+                           parameters=[{
+                               'use_sim_time':
+                               LaunchConfiguration('use_sim_time')
+                           }],
+                           arguments=[
+                               '--ros-args', '--log-level',
+                               LaunchConfiguration('log_level')
+                           ],
+                           respawn=True,
+                           condition=IfCondition(
+                               LaunchConfiguration('start_odom')))
 
-    realsense_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(get_package_share_directory('rover_bringup'),
-                         'launch', 'realsense_camera.launch.py')))
+    imu_node = Node(package='controller',
+                    executable='imu_publisher',
+                    name='imu_publisher',
+                    output='screen',
+                    parameters=[{
+                        'use_sim_time':
+                        LaunchConfiguration('use_sim_time')
+                    }],
+                    arguments=[
+                        '--ros-args', '--log-level',
+                        LaunchConfiguration('log_level')
+                    ],
+                    respawn=True,
+                    condition=IfCondition(LaunchConfiguration('start_imu')))
 
-    wheel_encoder_node = Node(
-        package='controller',
-        executable='wheel_encoder_node',
-        name='wheel_encoder_node',
-        output='screen',
-    )
-
-    imu_publisher_node = Node(
-        package='controller',
-        executable='imu_publisher',
-        name='imu_publisher',
-        output='screen',
-    )
-
-    imu_filter_madgwick = Node(
-        package='imu_filter_madgwick',
-        executable='imu_filter_madgwick_node',
-        name='imu_filter',
-        parameters=[{
-            'use_mag': False,
-            'publish_tf': False,
-            'world_frame': 'enu',
-            'base_frame': 'camera_link'
-        }],
-        remappings=[
-            ('/imu/data_raw', '/imu'),
-        ],
-    )
-
-    odom_publisher_node = Node(
-        package='controller',
-        executable='odom_publisher',
-        name='odom_publisher',
-        output='screen',
-    )
+    motor_bridge_node = Node(package='controller',
+                             executable='sabertooth_cmd_vel_bridge',
+                             name='sabertooth_cmd_vel_bridge',
+                             output='screen',
+                             parameters=[{
+                                 'use_sim_time':
+                                 LaunchConfiguration('use_sim_time')
+                             }],
+                             arguments=[
+                                 '--ros-args', '--log-level',
+                                 LaunchConfiguration('log_level')
+                             ],
+                             respawn=True,
+                             condition=IfCondition(
+                                 LaunchConfiguration('start_motor')))
 
     return LaunchDescription([
-        sabertooth_cmd_vel_bridge_node,
-        wheel_encoder_node,
-        odom_publisher_node,
-        imu_publisher_node,
-        rplidar_launch,
-        realsense_launch,
-        imu_filter_madgwick,
+        use_sim_time,
+        log_level,
+        start_encoder,
+        start_odom,
+        start_imu,
+        start_motor,
+        encoder_node,
+        wheel_odom_node,
+        # imu_node,
+        motor_bridge_node,
     ])

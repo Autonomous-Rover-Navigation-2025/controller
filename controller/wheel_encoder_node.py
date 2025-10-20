@@ -12,7 +12,7 @@ ENCODER_PINS = {
     "rear_right": 13
 }
 
-TIMER_PERIOD = 0.5  # seconds
+TIMER_PERIOD = 0.02
 
 
 class WheelEncoderNode(Node):

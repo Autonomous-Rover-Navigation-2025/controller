@@ -4,7 +4,7 @@ from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Float32MultiArray
 from sensor_msgs.msg import Imu
-from geometry_msgs.msg import TransformStamped
+from geometry_msgs.msg import TransformStamped, Quaternion
 import tf2_ros
 import math
 from tf_transformations import euler_from_quaternion, quaternion_from_euler
@@ -13,17 +13,20 @@ from tf_transformations import euler_from_quaternion, quaternion_from_euler
 TICKS_PER_ROTATION = 620
 WHEEL_DIAMETER = 0.1524  # meters
 CIRCUMFERENCE = math.pi * WHEEL_DIAMETER
-TIMER_PERIOD = 0.5  # seconds
+
+# (kept for reference but NOT used for speed; actual dt is used)
+TIMER_PERIOD = 0.5
+
 HALF_WHEEL_BASE = (0.31 - 0.05 - 0.05) / 2
 HALF_TRACK_WIDTH = (0.05552 + 0.02 + 0.24 + 0.02 + 0.05552) / 2
 
 # === Node & Topic Names ===
-PUBLISHER_NODE_NAME = "odom_publisher"
-PUBLISH_TOPIC_NAME = "/odom"
+PUBLISHER_NODE_NAME = "wheel_odom_publisher"
+PUBLISH_TOPIC_NAME = "/wheel_odom"
 SUBSCRIPTION_TOPIC_ENCODER = "/encoder_ticks"
-SUBSCRIPTION_TOPIC_IMU = "/imu/data"
 
-class OdomPublisher(Node):
+
+class WheelOdomPublisher(Node):
 
     def __init__(self):
         super().__init__(PUBLISHER_NODE_NAME)
@@ -35,56 +38,79 @@ class OdomPublisher(Node):
         # Subscriptions
         self.create_subscription(Float32MultiArray, SUBSCRIPTION_TOPIC_ENCODER,
                                  self.encoder_callback, 10)
-        self.create_subscription(Imu, SUBSCRIPTION_TOPIC_IMU,
-                                 self.imu_callback, 10)
 
         # Initialize state variables
-        self.last_time = self.get_clock().now()
+        self.last_time = None  # <-- initialize lazily
         self.x = 0.0
         self.y = 0.0
         self.theta = 0.0
         self.imu_yaw = 0.0
         self.imu_angular_z = 0.0
 
-    # === IMU Callback ===
-    def imu_callback(self, msg):
-        q = msg.orientation
-        _, _, yaw = euler_from_quaternion([q.x, q.y, q.z, q.w])
-        self.imu_yaw = yaw
-        self.imu_angular_z = msg.angular_velocity.z
-
     # === Encoder Callback ===
     def encoder_callback(self, msg):
         if len(msg.data) != 4:
-            self.get_logger().warn("Expected 4 encoder values, got different count.")
+            self.get_logger().warn(
+                "Expected 4 encoder values, got different count.")
             return
 
         current_time = self.get_clock().now()
+
+        # First message just seeds the clock
+        if self.last_time is None:
+            self.last_time = current_time
+            return
+
         dt = (current_time - self.last_time).nanoseconds * 1e-9
+        if dt <= 0.0:
+            # non-increasing timestamp; skip
+            return
         self.last_time = current_time
 
-        vx, vy = self.compute_velocity(msg.data)
+        # Optional: warn if dt is unexpectedly large (can hurt integration quality)
+        if dt > 0.2:
+            self.get_logger().warn(f"Large dt detected: {dt:.3f}s")
 
+        ticks = list(msg.data)
+
+        # Flip RIGHT side (FR = index 1, RR = index 3)
+        ticks[1] = -ticks[1]
+        ticks[3] = -ticks[3]
+
+        # compute velocities using actual dt
+        vx, vy = self.compute_velocity(ticks, dt)
+
+        # # --- INFO LOG: velocities and basics ---
+        # self.get_logger().info(
+        #     f"velocities -> vx: {vx:.3f} m/s, vy: {vy:.3f} m/s, wz: {self.imu_angular_z:.3f} rad/s | "
+        #     f"dt: {dt:.3f}s | ticks: {[int(t) for t in msg.data]}")
+
+        # integrate position
         delta_x = (vx * math.cos(self.theta) - vy * math.sin(self.theta)) * dt
         delta_y = (vx * math.sin(self.theta) + vy * math.cos(self.theta)) * dt
 
         self.x += delta_x
         self.y += delta_y
-        self.theta = self.imu_yaw  # use IMU yaw for orientation correction
 
-        self.get_logger().info(
-            f"x={self.x:.3f}, y={self.y:.3f}, θ={self.theta:.3f} | "
+        # keep your original behavior: use IMU yaw directly (no fallback added)
+        self.theta = self.imu_yaw
+
+        self.get_logger().debug(
+            f"dt={dt:.3f}s | x={self.x:.3f}, y={self.y:.3f}, θ={self.theta:.3f} | "
             f"vx={vx:.2f} m/s, vy={vy:.2f} m/s, ωz={self.imu_angular_z:.2f} rad/s"
         )
 
         self.publish_odometry(current_time, vx, vy, self.imu_angular_z)
 
-    # === Velocity Computation ===
-    def compute_velocity(self, ticks):
-        distances = [tick / TICKS_PER_ROTATION * CIRCUMFERENCE for tick in ticks]
-        speeds = [d / TIMER_PERIOD for d in distances]
+    # === Velocity Computation (uses dt) ===
+    def compute_velocity(self, ticks, dt):
+        # ticks are assumed to be counts accumulated since the previous message
+        distances = [(tick / TICKS_PER_ROTATION) * CIRCUMFERENCE
+                     for tick in ticks]
+        speeds = [d / dt for d in distances]  # m/s using actual dt
         v1, v2, v3, v4 = speeds
 
+        # mecanum forward kinematics (adjust signs if your wiring is inverted)
         vx = (v1 + v2 + v3 + v4) / 4.0
         vy = (v1 - v2 - v3 + v4) / 4.0
         return vx, vy
@@ -100,43 +126,22 @@ class OdomPublisher(Node):
         odom.pose.pose.position.y = self.y
         odom.pose.pose.position.z = 0.0
 
-        q = quaternion_from_euler(0, 0, self.theta)
-        odom.pose.pose.orientation.x = q[0]
-        odom.pose.pose.orientation.y = q[1]
-        odom.pose.pose.orientation.z = q[2]
-        odom.pose.pose.orientation.w = q[3]
+        qx, qy, qz, qw = quaternion_from_euler(0.0, 0.0, self.theta)
+        odom.pose.pose.orientation = Quaternion(x=qx, y=qy, z=qz, w=qw)
 
         odom.twist.twist.linear.x = vx
         odom.twist.twist.linear.y = vy
         odom.twist.twist.angular.z = omega_z
 
         self.odom_pub.publish(odom)
+        self.get_logger().debug(
+            f"Odometry published: x={self.x:.3f}, y={self.y:.3f}, θ={self.theta:.3f}, "
+            f"vx={vx:.3f}, vy={vy:.3f}, ωz={omega_z:.3f}")
 
-        # Broadcast odom → base_link TF
-        self.broadcast_tf_odom_to_base(stamp, q)
 
-    # === TF Broadcaster: odom → base_link ===
-    def broadcast_tf_odom_to_base(self, stamp, q):
-        t = TransformStamped()
-        t.header.stamp = stamp.to_msg()
-        t.header.frame_id = "odom"
-        t.child_frame_id = "base_link"
-
-        t.transform.translation.x = self.x
-        t.transform.translation.y = self.y
-        t.transform.translation.z = 0.0
-
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
-
-        self.tf_broadcaster.sendTransform(t)
-
-# === Main Function ===
 def main(args=None):
     rclpy.init(args=args)
-    node = OdomPublisher()
+    node = WheelOdomPublisher()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()

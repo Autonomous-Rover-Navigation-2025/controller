@@ -5,7 +5,7 @@
 
             W - Move Forward
             S - Move Backward
-A - Turn Left
+            A - Turn Left
             D - Turn Right
             Q - Stop and Exit
 
@@ -101,41 +101,32 @@ def main(args=None):
         while True:
             key = catch_keypress().lower()
             if key == 'w':
-                linear_velocity = 0.1
-                angular_velocity = 0.0  # Optional: only if you're updating it
-
+                linear_velocity += 0.1
+                angular_velocity = 0.0
                 node.publish_twist(linear_velocity, angular_velocity)
                 node.get_logger().info(
                     f"You pressed {key.upper()} — moving forward with linear_velocity: {linear_velocity}, angular_velocity: {angular_velocity}"
                 )
-
-                # # Move for 5 seconds
-                # time.sleep(5)
-
-                # # Stop the robot
-                # linear_velocity = 0.0
-                # angular_velocity = 0.0
-                # node.publish_twist(linear_velocity, angular_velocity)
-                # node.get_logger().info(
-                #     f"Auto-stop after 5 seconds. linear_velocity: {linear_velocity}, angular_velocity: {angular_velocity}"
-                # )
             elif key == 's':
                 linear_velocity -= 0.1
+                angular_velocity = 0.0
                 node.publish_twist(linear_velocity, angular_velocity)
                 node.get_logger().info(
                     f"You pressed {key} Key, Move Rover Backward with linear_velocity: {linear_velocity} and angular_velocity: {angular_velocity}"
                 )
             elif key == 'a':
                 angular_velocity += 0.1
-                node.publish_twist(linear_velocity, angular_velocity)
-                node.get_logger().info(
-                    f"You pressed {key} Key, which Turns Rover Right with linear_velocity: {linear_velocity} and angular_velocity: {angular_velocity}"
-                )
-            elif key == 'd':
-                angular_velocity -= 0.1
+                linear_velocity = 0.0
                 node.publish_twist(linear_velocity, angular_velocity)
                 node.get_logger().info(
                     f"You pressed {key} Key, which Turns Rover Left with linear_velocity: {linear_velocity} and angular_velocity: {angular_velocity}"
+                )
+            elif key == 'd':
+                angular_velocity -= 0.1
+                linear_velocity = 0.0
+                node.publish_twist(linear_velocity, angular_velocity)
+                node.get_logger().info(
+                    f"You pressed {key} Key, which Turns Rover Right with linear_velocity: {linear_velocity} and angular_velocity: {angular_velocity}"
                 )
             elif key == 'q':
                 linear_velocity = 0.0
