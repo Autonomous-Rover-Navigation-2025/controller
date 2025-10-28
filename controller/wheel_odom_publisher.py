@@ -73,17 +73,12 @@ class WheelOdomPublisher(Node):
 
         ticks = list(msg.data)
 
-        # Flip RIGHT side (FR = index 1, RR = index 3)
-        ticks[1] = -ticks[1]
-        ticks[3] = -ticks[3]
+        # # Flip RIGHT side (FR = index 1, RR = index 3)
+        # ticks[1] = -ticks[1]
+        # ticks[3] = -ticks[3]
 
         # compute velocities using actual dt
         vx, vy = self.compute_velocity(ticks, dt)
-
-        # # --- INFO LOG: velocities and basics ---
-        # self.get_logger().info(
-        #     f"velocities -> vx: {vx:.3f} m/s, vy: {vy:.3f} m/s, wz: {self.imu_angular_z:.3f} rad/s | "
-        #     f"dt: {dt:.3f}s | ticks: {[int(t) for t in msg.data]}")
 
         # integrate position
         delta_x = (vx * math.cos(self.theta) - vy * math.sin(self.theta)) * dt
