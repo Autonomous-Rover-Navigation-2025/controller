@@ -27,7 +27,6 @@ setup(
             'sabertooth_cmd_vel_bridge = controller.sabertooth_cmd_vel_bridge:main',
             'wheel_encoder = controller.wheel_encoder:main',
             'wheel_odom_publisher = controller.wheel_odom_publisher:main',
-            
         ],
     },
 )
