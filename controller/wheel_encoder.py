@@ -15,7 +15,7 @@ ENCODER_PINS = {
     "front_left":  {"A": 19, "B": 36},
     "front_right": {"A": 22, "B": 35},
     "rear_left":   {"A": 29, "B": 38},
-    "rear_right":  {"A": 13, "B": 37},
+    "rear_right":  {"A": 16, "B": 18},
 }
 WHEEL_ORDER = ["front_left", "front_right", "rear_left", "rear_right"]
 
@@ -58,18 +58,23 @@ class WheelEncoderNode(Node):
         """Poll A/B during TIMER_PERIOD, return signed tick delta."""
         pins = ENCODER_PINS[wheel]
         count = 0
-        start = time.time()
         prev = self.prev_state[wheel]
-
-        while (time.time() - start) < TIMER_PERIOD:
+        start = time.time()
+        while (time.time() - start) <= TIMER_PERIOD:
             a = GPIO.input(pins["A"])
             b = GPIO.input(pins["B"])
             curr = (a << 1) | b
-            delta = STEP[prev][curr]
+            if curr != prev:
+                # If both bits flipped, it's an invalid jump (missed state) → ignore
+                if (curr ^ prev) == 0b11:
+                    delta = 0
+                else:
+                    delta = STEP[prev][curr]
+            else:
+                delta = 0
+
             if delta != 0:
                 count += delta
-            # --- LOG A and B pin values ---
-            self.get_logger().debug(f"{wheel}: A={a}, B={b}, delta={delta}")
             # Always update prev so we can recover after invalid jumps
             prev = curr
 

@@ -37,7 +37,7 @@ class MPU6050Node(Node):
         # --- Step 2: Initialize Hardware ---
         # Initialize sensor driver with ROS node reference
         self.sensor = MPU6050Driver(self, self.bus_number)
-        self.sensor.initialize()
+        self.sensor.initialize(accel_range = 3, gyro_range = 3, auto_calibrate = True)
 
         # --- Step 3: Initialize ROS Components ---
         self._init_publishers_and_timers()
@@ -165,76 +165,58 @@ class MPU6050Node(Node):
             self.stationary_count = 0
             return True
     
-    def _compute_linear_velocity(self, ax, ay, az, quaternion):
+    def _compute_linear_velocity(self, ax_ms2, ay_ms2, az_ms2):
         """Integrate linear acceleration to get linear velocity (m/s) with proper compensation."""
         current_time = time.time()
         dt = current_time - self.prev_time
         self.prev_time = current_time
 
-        # Convert g-force to m/s²
-        GRAVITY_MS2 = 9.80665
-        ax_ms2 = ax * GRAVITY_MS2
-        ay_ms2 = ay * GRAVITY_MS2
-        az_ms2 = az * GRAVITY_MS2
+        # Integrate: v = v + a * dt
+        self.linear_velocity[0] += ax_ms2 * dt
+        self.linear_velocity[1] += ay_ms2 * dt
+        self.linear_velocity[2] += az_ms2 * dt
 
-        # Estimate bias if not calibrated
-        self._estimate_accel_bias(ax_ms2, ay_ms2, az_ms2)
-        
-        if self.is_calibrated:
-            # Compensate for gravity and bias
-            accel_compensated = self._compensate_gravity(ax_ms2, ay_ms2, az_ms2, quaternion)
-            
-            # Detect motion
-            is_moving = self._detect_motion(accel_compensated)
-            
-            if is_moving:
-                # Integrate: v = v + a * dt
-                self.linear_velocity[0] += accel_compensated[0] * dt
-                self.linear_velocity[1] += accel_compensated[1] * dt
-                self.linear_velocity[2] += accel_compensated[2] * dt
-            else:
-                # Reset velocity when stationary for too long
-                if self.stationary_count >= self.stationary_threshold:
-                    self.linear_velocity = [0.0, 0.0, 0.0]
-                    self.get_logger().debug("Velocity reset due to stationary detection")
-        else:
-            # During calibration, don't integrate
-            accel_compensated = np.array([0.0, 0.0, 0.0])
-
-        return self.linear_velocity, dt, accel_compensated
+        return self.linear_velocity, dt
     
-     # ================================================================
+    # ================================================================
     # 🧭 1️⃣ Get Orientation (from gyro + accel)
     # ================================================================
     def get_orientation(self, gx, gy, gz, ax, ay, az):
         # Convert gyro from deg/s to rad/s for filter
         gyro = np.radians(np.array([gx, gy, gz]))
-
-        # Normalize accelerometer (in g) for filter input
-        accel_g = np.array([ax, ay, az])
-        accel_norm = np.linalg.norm(accel_g)
-        if accel_norm > 1e-6:
-            accel = accel_g / accel_norm
-        else:
-            accel = accel_g
+        accel = np.array([ax, ay, az])
 
         # Update Madgwick filter and cache quaternion for next step
         new_quaternion = self.filter.updateIMU(self.prev_global_quaternion, gyro, accel)
+
+        # Check for invalid or zero quaternions
+        if new_quaternion is None or np.any(np.isnan(new_quaternion)):
+            self.get_logger().warn("⚠️ Madgwick returned invalid quaternion, keeping previous orientation.")
+            new_quaternion = self.prev_global_quaternion
+
+        norm_q = np.linalg.norm(new_quaternion)
+        if norm_q < 1e-6:
+            self.get_logger().warn("⚠️ Zero-norm quaternion detected, using previous quaternion.")
+            new_quaternion = self.prev_global_quaternion
+            norm_q = np.linalg.norm(new_quaternion)
+
+        # Normalize quaternion
+        new_quaternion /= norm_q
         self.prev_global_quaternion = new_quaternion
 
+        # Convert to scipy format: [x, y, z, w]
+        quat = [new_quaternion[1], new_quaternion[2], new_quaternion[3], new_quaternion[0]]
+
         # Convert quaternion → Euler angles (roll, pitch, yaw)
-        quat = np.array([new_quaternion[1], new_quaternion[2], new_quaternion[3], new_quaternion[0]])
-        norm = np.linalg.norm(quat)
-        if norm < 1e-6:
-            # Handle zero quaternion safely
-            roll, pitch, yaw = 0.0, 0.0, 0.0
-            print("Warning: zero quaternion detected, setting roll/pitch/yaw to 0")
-        else:
-            quat /= norm  # Normalize quaternion
+        try:
             r = R.from_quat(quat)
             roll, pitch, yaw = r.as_euler('xyz', degrees=True)
+        except ValueError:
+            self.get_logger().warn("⚠️ Failed to convert quaternion to Euler. Resetting to (0,0,0).")
+            roll, pitch, yaw = 0.0, 0.0, 0.0
 
         return roll, pitch, yaw, new_quaternion
+
 
     # ================================================================
     # 🧱 TF BROADCASTER
@@ -271,9 +253,8 @@ class MPU6050Node(Node):
         msg.header.frame_id = self.frame_id
 
         # --- Read raw sensor data ---
-        ax, ay, az = self.sensor.read_accel(g=True)
-        gx, gy, gz = self.sensor.read_gyro()
-        # self.get_logger().info(f"Linear ax,ay,az [m/s²]: ({ax:.3f}, {ay:.3f}, {az:.3f})")
+        ax, ay, az = self.sensor.read_accel(g=False, samples=20)
+        gx, gy, gz = self.sensor.read_gyro(samples=20)
     
         # --- Convert units to angular_velocity ---
         msg.angular_velocity.x = math.radians(gx)
@@ -284,14 +265,12 @@ class MPU6050Node(Node):
         roll, pitch, yaw, self.new_global_quaternion = self.get_orientation(gx, gy, gz, ax, ay, az)
 
         # --- Compute linear velocity with proper compensation ---
-        linear_velocity, dt, accel_compensated = self._compute_linear_velocity(
-            ax, ay, az, self.new_global_quaternion
-        )
+        linear_velocity, dt = self._compute_linear_velocity( ax, ay, az)
         
         # --- Set compensated acceleration in message ---
-        msg.linear_acceleration.x = accel_compensated[0]
-        msg.linear_acceleration.y = accel_compensated[1]
-        msg.linear_acceleration.z = accel_compensated[2]
+        msg.linear_acceleration.x = ax
+        msg.linear_acceleration.y = ay
+        msg.linear_acceleration.z = az
         msg.orientation.x = self.new_global_quaternion[1]  # x component
         msg.orientation.y = self.new_global_quaternion[2]  # y component  
         msg.orientation.z = self.new_global_quaternion[3]  # z component
@@ -301,22 +280,12 @@ class MPU6050Node(Node):
         self.imu_pub.publish(msg)
         self._broadcast_tf(self.new_global_quaternion)
 
-        # --- Log summary ---
-        if self.is_calibrated:
-            self.get_logger().info(f"Linear Accel [m/s²]: ({msg.linear_acceleration.x:.3f}, {msg.linear_acceleration.y:.3f}, {msg.linear_acceleration.z:.3f})")
-            self.get_logger().info(f"Linear Vel     [m/s]: ({linear_velocity[0]:.3f}, {linear_velocity[1]:.3f}, {linear_velocity[2]:.3f}) | Δt={dt:.3f}s")
-        else:
-            self.get_logger().info(f"Calibrating... ({len(self.bias_samples)}/{self.bias_calibration_samples} samples)")
-
-        # self.get_logger().info(f"Accel [g]:     ({ax:.2f}, {ay:.2f}, {az:.2f})")
-        # self.get_logger().info(f"Gyro [°/s]:    ({gx:.2f}, {gy:.2f}, {gz:.2f})")
-        # self.get_logger().info(f"RPY  [°]:      ({math.degrees(roll):.1f}, {math.degrees(pitch):.1f}, {math.degrees(yaw):.1f})")
-        # self.get_logger().info(
-        #     f"Quat [wxyz]:  ({self.new_global_quaternion[0]:.3f}, "
-        #     f"{self.new_global_quaternion[1]:.3f}, "
-        #     f"{self.new_global_quaternion[2]:.3f}, "
-        #     f"{self.new_global_quaternion[3]:.3f})"
-        # )
+        # # --- Log summary ---
+        self.get_logger().info(f"Linear Accel [m/s²]: ({msg.linear_acceleration.x:.2f}, {msg.linear_acceleration.y:.2f}, {msg.linear_acceleration.z:.2f})")
+        self.get_logger().info(f"Linear Vel     [m/s]: ({linear_velocity[0]:.2f}, {linear_velocity[1]:.2f}, {linear_velocity[2]:.2f}) | Δt={dt:.2f}s")
+        self.get_logger().info(f"Gyro [Radians]: ({msg.angular_velocity.x:.2f}, {msg.angular_velocity.y:.2f}, {msg.angular_velocity.z:.2f})") 
+        self.get_logger().info(f"RPY [°]: ({math.degrees(roll):.2f}, {math.degrees(pitch):.2f}, {math.degrees(yaw):.2f})") # 
+        self.get_logger().info(f"Quat [wxyz]: ({self.new_global_quaternion[0]:.2f}, {self.new_global_quaternion[1]:.2f}, {self.new_global_quaternion[2]:.2f}, {self.new_global_quaternion[3]:.2f})")
 
     # ================================================================
     # 🧹 CLEANUP

@@ -74,8 +74,8 @@ class WheelOdomPublisher(Node):
         ticks = list(msg.data)
 
         # # Flip RIGHT side (FR = index 1, RR = index 3)
-        # ticks[1] = -ticks[1]
-        # ticks[3] = -ticks[3]
+        ticks[1] = -ticks[1]
+        ticks[3] = -ticks[3]
 
         # compute velocities using actual dt
         vx, vy = self.compute_velocity(ticks, dt)
