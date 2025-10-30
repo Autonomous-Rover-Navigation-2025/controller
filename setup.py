@@ -23,17 +23,11 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'serial_com = controller.serial_com:main',
-            'wheel_odometry = controller.wheel_odometry:main',
             'keyboard_control = controller.keyboard_control:main',
-            'test_serial_com = controller.test_serial_com:main',
             'sabertooth_cmd_vel_bridge = controller.sabertooth_cmd_vel_bridge:main',
-            'odom_publisher = controller.odom_publisher:main',
-            'wheel_odom_publisher = controller.wheel_odom_publisher:main',
-            'wheel_encoder_node = controller.wheel_encoder_node:main',
             'wheel_encoder = controller.wheel_encoder:main',
-            'imu_publisher = controller.imu_publisher:main',
-            'imu_sensor_node = controller.imu_sensor_node:main',
+            'wheel_odom_publisher = controller.wheel_odom_publisher:main',
+            
         ],
     },
 )
