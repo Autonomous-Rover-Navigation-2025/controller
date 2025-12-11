@@ -56,7 +56,7 @@ class Basic_Key_ControlNode(Node):
         self.twist_msg_ = Twist()
 
         # Publisher for sending velocity commands to the Serial_Com Node
-        self.Serial_Com_pub = self.create_publisher(Twist, '/cmd_vel_nav', 10)
+        self.Serial_Com_pub = self.create_publisher(Twist, '/cmd_vel', 10)
 
         self.get_logger().info(
             "Use keys: [W] Forward, [S] Backward, [A] Left, [D] Right, [Q] Quit"

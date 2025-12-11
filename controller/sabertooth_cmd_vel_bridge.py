@@ -35,11 +35,11 @@ class SabertoothBridge(Node):
         self.addr_right = 128
 
         # Subscribe to velocity commands
-        self.subscription = self.create_subscription(Twist, '/cmd_vel_nav',
+        self.subscription = self.create_subscription(Twist, '/cmd_vel',
                                                      self.cmd_vel_callback, 10)
 
         self.get_logger().info(
-            'Sabertooth bridge initialized and listening on /cmd_vel_nav')
+            'Sabertooth bridge initialized and listening on /cmd_vel')
 
     def cmd_vel_callback(self, msg):
         v = msg.linear.x
@@ -61,6 +61,7 @@ class SabertoothBridge(Node):
         else:
             val_l = 0
             val_r = 0
+        self.get_logger().info(f"Current value: val_l={val_l}, val_r={val_r}")
 
         # Send to left motor
         self.send_motor_command(self.addr_left, val_l)
@@ -69,7 +70,13 @@ class SabertoothBridge(Node):
         self.send_motor_command(self.addr_right, val_r)
 
     def clamp_and_int(self, x, min_val, max_val):
-        return int(max(min_val, min(max_val, round(x))))
+        # Ensure symmetric rounding: handle sign explicitly to guarantee
+        # forward and backward have identical absolute values for same speed
+        sign = 1 if x >= 0 else -1
+        abs_val = abs(x)
+        rounded_abs = round(abs_val)
+        clamped_abs = max(0, min(abs(max_val), rounded_abs))
+        return int(sign * clamped_abs)
 
     def calculate_checksum(self, address, command, value):
         return (address + command + value) & 0x7F
@@ -85,11 +92,11 @@ class SabertoothBridge(Node):
     def send_motor_command(self, address, speed):
         """Send forward/reverse commands based on speed sign."""
         if speed >= 0:
-            self.send_packet(address, 0, speed)  # Forward
-            self.send_packet(address, 4, speed)  # Optional: ramp
+            self.send_packet(address, 0, speed)  # Forward M1
+            self.send_packet(address, 4, speed)  # Forward M2
         else:
-            self.send_packet(address, 1, abs(speed))  # Reverse
-            self.send_packet(address, 5, abs(speed))  # Optional: ramp
+            self.send_packet(address, 1, abs(speed))  # Reverse M1
+            self.send_packet(address, 5, abs(speed))  # Reverse M2
 
 
 def main(args=None):

@@ -24,6 +24,7 @@ setup(
     entry_points={
         'console_scripts': [
             'keyboard_control = controller.keyboard_control:main',
+            'realsense_imu_logger = controller.realsense_imu_logger:main',
             'sabertooth_cmd_vel_bridge = controller.sabertooth_cmd_vel_bridge:main',
             'wheel_encoder = controller.wheel_encoder:main',
             'wheel_odom_publisher = controller.wheel_odom_publisher:main',

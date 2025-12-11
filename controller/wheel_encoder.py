@@ -12,8 +12,8 @@ GPIO.setmode(GPIO.BOARD)  # Using physical header pin numbers
 
 # Map each wheel to its A/B pins (your selection)
 ENCODER_PINS = {
-    "front_left":  {"A": 19, "B": 36},
-    "front_right": {"A": 22, "B": 35},
+    "front_left":  {"A": 19, "B": 32}, # B-> 36
+    "front_right": {"A": 35, "B": 36}, # B-> 35
     "rear_left":   {"A": 29, "B": 38},
     "rear_right":  {"A": 16, "B": 18},
 }
@@ -84,6 +84,12 @@ class WheelEncoderNode(Node):
     def timer_callback(self):
         msg = Float32MultiArray()
         msg.data = [float(self.measure_quadrature(w)) for w in WHEEL_ORDER]
+        # Assuming WHEEL_ORDER = ["front_left", "front_right", "rear_left", "rear_right"]
+        if len(msg.data) >= 4:
+            #  Flip Direction  of RIGHT side (FR = index 1, RR = index 3)
+            msg.data[1] = -msg.data[1]
+            msg.data[3] = -msg.data[3]
+            
         self.publisher_.publish(msg)
 
 
