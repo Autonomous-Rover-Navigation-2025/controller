@@ -16,7 +16,7 @@
 
         Purpose: Sends velocity commands (linear and angular) to another ROS2 node (e.g., Serial_Com) that likely handles motor control via serial communication.
 
-✅ Key Features
+✅ Key Feature
         Converts user keystrokes into Twist velocity commands.
 
         Publishes the commands over ROS2 to /cmd_vel for controlling robot motion.
